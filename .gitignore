@@ -1,4 +1,6 @@
 *.pyc
 *.pyo
 .*
+output/
+mrbaviirc.egg-info/
 !.gitignore
