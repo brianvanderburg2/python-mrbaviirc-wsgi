@@ -11,7 +11,7 @@ from setuptools.command.install_lib import install_lib
 # are added the same way, with this hack, are found, instead of any on sys.path
 def dummy(self):
     pass
-#install_egg_info.install_namespaces = dummy
+install_egg_info.install_namespaces = dummy
 
 # Force installation of __init__.py both for python 2 and 3.  For Python 2
 # this is required since it doesn't support implicit namespaces.  For Python 3
@@ -23,7 +23,7 @@ def dummy2(self):
         if i == "__init__.py":
             continue
         yield i
-#install_lib._gen_exclusion_paths = dummy2
+install_lib._gen_exclusion_paths = dummy2
 
 setup(
     name="mrbavii",
