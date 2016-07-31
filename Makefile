@@ -12,7 +12,6 @@ test: check
 
 .PHONY: clean
 clean: check
-	rm -rf test/output
 	rm -rf output
 	rm -rf mrbaviirc.egg-info
 	find mrbaviirc -type f -name "*.py[co]" -delete
@@ -25,6 +24,10 @@ output: check
 tarball: NAME:=mrbaviirc-$(shell date +%Y%m%d)-$(shell git describe --always)
 tarball: output
 	git archive --format=tar --prefix=$(NAME)/ HEAD | xz > output/$(NAME).tar.xz
+
+.PHONY: test
+test: output
+	python -m mrbaviirc.tests
 
 .PHONY: wheel
 wheel: output
