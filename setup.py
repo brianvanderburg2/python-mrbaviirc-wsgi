@@ -2,10 +2,14 @@
 
 from setuptools import setup, find_packages
 
+metadata = {}
+with open("mrbaviirc/__init__.py") as handle:
+    exec(handle.read(), metadata)
+
 setup(
     name="mrbaviirc",
-    version="0.1.1", # TODO: auto-read this from mrbaviirc/__init__.py
-    description="Mr. Brian Allen Vanderburg II Reusable Code",
-    author = "Brian Allen Vanderburg II",
+    version=metadata["__version__"],
+    description=metadata["__doc__"].strip(),
+    author=metadata["__author__"],
     packages=find_packages()
 )
