@@ -1,4 +1,4 @@
-mrbavii.lib.template
+mrbavii_lib_template
 ====================
 
 This is a custom template engine coded in Python.
