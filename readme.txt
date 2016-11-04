@@ -1,6 +1,7 @@
-Mr. Brian Allen Vanderburg II Reusable Classes/Code
-===================================================
-This project constists of reusable classes and code for Python.
+mrbavii.lib.template
+====================
+
+This is a custom template engine coded in Python.
 
 Copyright
 =========

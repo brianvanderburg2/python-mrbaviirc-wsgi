@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 metadata = {}
-with open("mrbavii_lib_template/version.py") as handle:
+with open("mrbavii_lib_template/_version.py") as handle:
     exec(handle.read(), metadata)
 
 setup(
