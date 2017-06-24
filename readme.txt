@@ -1,15 +1,11 @@
-mrbavii_lib_template
-====================
+mrbaviirc
+=========
 
-This is a custom template engine coded in Python.
+A collection of reusable python code.
 
 Copyright
 =========
-Copyright 2012-2016 Brian Allen Vanderburg II
-
-Version
-=======
-0.0.1
+Copyright 2012-2017 Brian Allen Vanderburg II
 
 License
 =======
