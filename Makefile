@@ -27,7 +27,7 @@ tarball: output
 
 .PHONY: test
 test: output
-	python -m mrbaviirc.template.tests
+	python -m mrbaviirc.tests
 
 .PHONY: wheel
 wheel: output
