@@ -15,7 +15,7 @@ clean: check
 	rm -rf output
 	rm -rf mrbaviirc.egg-info
 	find -type f -name "*.py[co]" -delete
-	find -type d -name "__pycache__" -delete
+	find -depth \( -path "*/__pycache__/*" -o -name __pycache__ \) -delete
 
 output: check
 	mkdir -p output
