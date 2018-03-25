@@ -21,7 +21,7 @@ output: check
 	mkdir -p output
 
 .PHONY: tarball
-tarball: NAME:=mrbaviirc-$(shell date +%Y%m%d)-$(shell git describe --always)
+tarball: NAME:=mrbaviirc-$(shell git symbolic-ref --short HEAD)-$(shell date +%Y%m%d)-$(shell git describe --always)
 tarball: output
 	git archive --format=tar --prefix=$(NAME)/ HEAD | xz > output/$(NAME).tar.xz
 
