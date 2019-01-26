@@ -11,5 +11,5 @@ setup(
     version=metadata["__version__"],
     description=metadata["__doc__"].strip(),
     author=metadata["__author__"],
-    packages=find_packages()
+    packages=find_namespace_packages()
 )

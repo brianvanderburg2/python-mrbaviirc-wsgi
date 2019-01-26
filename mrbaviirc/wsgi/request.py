@@ -113,5 +113,5 @@ class Request(object):
     @lazyprop
     def response(self):
         """ Create our response object for this request. """
-        return self.app.resolve_service("webapp.response", self)
+        return self.app.call_factory("webapp.response", self)
         

@@ -13,6 +13,6 @@ export = Exporter(globals())
 
 export.extend(".request")
 export.extend(".response")
-export.extend(".webapp")
+export.extend(".app")
 #export.extend(".route")
 

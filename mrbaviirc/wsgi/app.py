@@ -18,7 +18,7 @@ export = Exporter(globals())
 
 
 @export
-class WebAppHelper(BaseAppHelper):
+class WsgiAppHelper(BaseAppHelper):
     """ A helper class for web applications. """
 
     def __init__(self):
@@ -33,7 +33,7 @@ class WebAppHelper(BaseAppHelper):
     def __call__(self, environ, start_response):
 
         # Create request object
-        request = self.resolve_service("webapp.request", self, environ)
+        request = self.call_factory("webapp.request", self, environ)
 
         self.handle_request(request)
 
