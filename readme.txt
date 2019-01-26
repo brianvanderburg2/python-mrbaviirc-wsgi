@@ -1,11 +1,11 @@
-mrbaviirc
-=========
+mrbaviirc.wsgi
+==============
 
-A collection of reusable python code.
+Classes for building a WSGI/web application.
 
 Copyright
 =========
-Copyright 2012-2017 Brian Allen Vanderburg II
+Copyright 2012-2019 Brian Allen Vanderburg II
 
 License
 =======
