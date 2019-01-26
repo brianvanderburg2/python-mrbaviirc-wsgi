@@ -2,5 +2,5 @@
 *.pyo
 .*
 output/
-mrbaviirc.egg-info/
+*.egg-info/
 !.gitignore

@@ -7,7 +7,7 @@ __copyright__   =   "Copyright (C) 2018 Brian Allen Vanderburg II"
 __license__     =   "Apache License 2.0"
 
 
-from ...util.imp import Exporter
+from mrbaviirc.common.util.imp import Exporter
 
 
 export = Exporter(globals())

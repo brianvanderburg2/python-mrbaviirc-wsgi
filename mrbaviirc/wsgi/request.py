@@ -23,8 +23,8 @@ except ImportError:
     from Cookie import SimpleCookie, CookieError
     
 
-from ...util.imp import Exporter
-from ...util.functools import lazyprop
+from mrbaviirc.common.util.imp import Exporter
+from mrbaviirc.common.util.functools import lazyprop
 
 
 export = Exporter(globals())
