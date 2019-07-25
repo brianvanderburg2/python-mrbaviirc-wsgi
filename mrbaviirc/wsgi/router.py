@@ -27,7 +27,12 @@ class _RouteEntry:
     
         # No more parts, we are the match
         if len(parts) == 0:
+            if self.callback is None:
+                # Raise error so we can seach other branches to find router with callback
+                raise LookupError("No callback found.")
+
             return (self.callback, params)
+
 
         part = parts[0]
 
@@ -46,15 +51,17 @@ class _RouteEntry:
 
             matched = regex.match(matchpart)
             if matched:
+                # clone so if subroutes fail we don't mess up parent route parameters
                 matched_params = dict(params)
                 matched_params.update(matched.groupdict())
 
                 if matchall:
-                    # regex matched the rest, do not recurse but return result
-                    return (self.dynamic[(matchall, regex)].callback, matched_params)
+                    subparts = []
+                else:
+                    subparts = parts[1:]
 
                 try:
-                    return self.dynamic[(matchall, regex)].find_match(parts[1:], matched_params)
+                    return self.dynamic[(matchall, regex)].find_match(subparts, matched_params)
                 except LookupError:
                     pass # Try next dynamic route
         
@@ -202,8 +209,12 @@ if __name__ == "__main__":
     a.register("/family/<base:int>-<offset:int>", fn1)
     a.register("/assets/<path:path>", fn1)
     a.register("/content/<id:int>/data", fn1)
-    a.register("/content/<id>/data", fn2)
-    a.register("/content/<id>/data2", fn2)
+    a.register("/content/<id2>/data", fn2)
+    a.register("/content/<id2>/data2", fn2)
+
+    a.register("/c/d/<name:int>/edit", fn1)
+    a.register("/c/d/<name>", fn2)
+
     print(a.route("/a/b"))
     print(a.route("/a/b/bob"))
     print(a.route("/a/b/bobby/d"))
@@ -216,3 +227,6 @@ if __name__ == "__main__":
     print(a.route("/content/29/data"))
     print(a.route("/content/d29/data"))
     print(a.route("/content/29/data2"))
+
+    print(a.route("/c/d/23/edit"))
+    print(a.route("/c/d/23"))
