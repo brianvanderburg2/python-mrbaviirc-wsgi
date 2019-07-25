@@ -108,7 +108,6 @@ class Router(object):
                 "<\\1>",
                 route
             )
-            print(self._named[name])
 
     def _split(self, route):
         """  split our route into individual components. """
