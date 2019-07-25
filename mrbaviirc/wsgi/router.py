@@ -72,19 +72,25 @@ class _RouteEntry:
 class Router(object):
     """ Route a request. """
 
+    _VAR_SPLIT_RE = re.compile("(<.*?>)")
+    _NAMED_STRIP_RE = re.compile("<([a-zA-Z0-9_]+)(:[^>]+)?>")
+    _NAMED_REPLACE_RE = re.compile("<([a-zA-Z0-9_]+)>")
+
     def __init__(self):
         """ Initialize router. """
 
         self._routes = _RouteEntry()
+        self._named = {}
 
         # We keep our own route cache to ensure identical regular expressions
         # are represented by the same tree node, even if for some reason the
         # Python compiled RE cache gets cleared between route additions.
         self._re_cache = {}
 
-    def register(self, route, callback):
+    def register(self, route, callback, name=None):
         """ Register a given route. """
 
+        # Register the path -> route
         segments = self._split(route)
         target = self._routes
 
@@ -96,6 +102,13 @@ class Router(object):
 
         target.callback = callback
 
+        # Register the name -> path
+        if name is not None:
+            self._named[name] = self._NAMED_STRIP_RE.sub(
+                "<\\1>",
+                route
+            )
+            print(self._named[name])
 
     def _split(self, route):
         """  split our route into individual components. """
@@ -112,7 +125,7 @@ class Router(object):
             re_found = False # Is this part static or regex
             matchall_found = False # Is this regex a match all regex
 
-            matches = list(i for i in re.split("(<.*?>)", part) if i) # strip blanks
+            matches = list(i for i in self._VAR_SPLIT_RE.split(part) if i) # strip blanks
             for moffset, match in enumerate(matches):
                 if match[0:1] == "<" and match[-1:] == ">":
                     re_found = True
@@ -190,6 +203,20 @@ class Router(object):
         # if two different regex patterns may match a result.
         return self._routes.find_match(parts, params)
 
+    def get(self, name, params):
+        """ Get a path from a named route. """
+        if name not in self._named:
+            raise LookupError("No such named route: " + name)
+
+        def subfn(mo):
+            key = mo.group(1)
+            if key not in params:
+                raise LookupError("No parameter for named route: " + key)
+
+            return str(params[key])
+
+        return self._NAMED_REPLACE_RE.sub(subfn, self._named[name])
+
 
 if __name__ == "__main__":
 
@@ -206,8 +233,8 @@ if __name__ == "__main__":
     a.register("/a/b/<path:path>", fn1)
     a.register("/users/<id:int>", fn1)
     a.register("/users/<id:int>/edit", fn2)
-    a.register("/family/<base:int>-<offset:int>", fn1)
-    a.register("/assets/<path:path>", fn1)
+    a.register("/family/<base:int>-<offset:int>", fn1, "myroute")
+    a.register("/assets/<path:path>", fn1, name="assets")
     a.register("/content/<id:int>/data", fn1)
     a.register("/content/<id2>/data", fn2)
     a.register("/content/<id2>/data2", fn2)
@@ -230,3 +257,6 @@ if __name__ == "__main__":
 
     print(a.route("/c/d/23/edit"))
     print(a.route("/c/d/23"))
+
+    print(a.get("myroute", {"base": 37, "offset": 42}))
+    print(a.get("assets", {"path": "images/background/bg1.png"}))
