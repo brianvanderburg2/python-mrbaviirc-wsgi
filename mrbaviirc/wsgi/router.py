@@ -24,9 +24,9 @@ class _RouteEntry:
 
     def find_match(self, parts, params):
         """ Find a submatch of the given path. """
-    
+
         # No more parts, we are the match
-        if len(parts) == 0:
+        if not parts:
             if self.callback is None:
                 # Raise error so we can seach other branches to find router with callback
                 raise LookupError("No callback found.")
@@ -64,12 +64,12 @@ class _RouteEntry:
                     return self.dynamic[(matchall, regex)].find_match(subparts, matched_params)
                 except LookupError:
                     pass # Try next dynamic route
-        
+
         # Got here with no match
         raise LookupError("Unmatched path: " + "/".join(parts))
 
 
-class Router(object):
+class Router:
     """ Route a request. """
 
     _VAR_SPLIT_RE = re.compile("(<.*?>)")
@@ -145,7 +145,7 @@ class Router(object):
             # If this was regex, then compile it, else no changes
             if re_found:
                 # Reuse the same regex from cache if already compiled
-                regex_str = "".join(matches)
+                regex_str = "^" + "".join(matches) + "$"
                 regex = self._re_cache.get(regex_str, None)
                 if regex is None:
                     regex = self._re_cache[regex_str] = re.compile(regex_str)
@@ -176,10 +176,13 @@ class Router(object):
                 regex = "-?[\\d.]+"
             elif vartype == "path":
                 matchall = True
-                regex = ".*"
+                regex = ".*" # Note that path can match blank elements as well
             elif vartype[0:3] == "re:":
                 matchall = False
                 regex = vartype[3:]
+            elif vartype[0:4] == "re*:":
+                matchall = True
+                regex = vartype[4:]
             else:
                 raise ValueError("Unknown route filter: " + vartype)
 
@@ -187,8 +190,6 @@ class Router(object):
 
     def route(self, path):
         """ Route a given request. """
-
-        target = self._routes
 
         parts = path.split("/")
         if parts[0] == "":
@@ -215,47 +216,3 @@ class Router(object):
             return str(params[key])
 
         return self._NAMED_REPLACE_RE.sub(subfn, self._named[name])
-
-
-if __name__ == "__main__":
-
-    def fn1():
-        pass
-
-    def fn2():
-        pass
-
-    a = Router()
-    a.register("/a/b", fn1)
-    a.register("/a/b/<name>", fn1)
-    a.register("/a/b/<name>/c", fn1)
-    a.register("/a/b/<path:path>", fn1)
-    a.register("/users/<id:int>", fn1)
-    a.register("/users/<id:int>/edit", fn2)
-    a.register("/family/<base:int>-<offset:int>", fn1, "myroute")
-    a.register("/assets/<path:path>", fn1, name="assets")
-    a.register("/content/<id:int>/data", fn1)
-    a.register("/content/<id2>/data", fn2)
-    a.register("/content/<id2>/data2", fn2)
-
-    a.register("/c/d/<name:int>/edit", fn1)
-    a.register("/c/d/<name>", fn2)
-
-    print(a.route("/a/b"))
-    print(a.route("/a/b/bob"))
-    print(a.route("/a/b/bobby/d"))
-    print(a.route("/users/23"))
-    print(a.route("/users/23/edit"))
-    print(a.route("/family/29-78"))
-    print(a.route("/assets/avatar/e101.png"))
-    print(a.route("/assets/avatar/e102.png"))
-    print(a.route("/content/27/data"))
-    print(a.route("/content/29/data"))
-    print(a.route("/content/d29/data"))
-    print(a.route("/content/29/data2"))
-
-    print(a.route("/c/d/23/edit"))
-    print(a.route("/c/d/23"))
-
-    print(a.get("myroute", {"base": 37, "offset": 42}))
-    print(a.get("assets", {"path": "images/background/bg1.png"}))
