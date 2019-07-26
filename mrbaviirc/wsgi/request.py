@@ -7,6 +7,8 @@ __copyright__   =   "Copyright (C) 2018 Brian Allen Vanderburg II"
 __license__     =   "Apache License 2.0"
 
 
+__all__ = ["Request"]
+
 try:
     from urllib.parse import urlsplit
 except ImportError:
@@ -23,14 +25,9 @@ except ImportError:
     from Cookie import SimpleCookie, CookieError
     
 
-from mrbaviirc.common.util.imp import Exporter
 from mrbaviirc.common.util.functools import lazyprop
 
 
-export = Exporter(globals())
-
-
-@export
 class Request(object):
     """ Represent a request. """
 

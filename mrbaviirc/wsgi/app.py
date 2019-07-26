@@ -2,22 +2,20 @@
 
 from __future__ import absolute_import
 
-__author__      =   "Brian Allen Vanderburg II"
-__copyright__   =   "Copyright (C) 2018 Brian Allen Vanderburg II"
-__license__     =   "Apache License 2.0"
+__author__ = "Brian Allen Vanderburg II"
+__copyright__ = "Copyright (C) 2018 Brian Allen Vanderburg II"
+__license__ = "Apache License 2.0"
 
 
-from mrbaviirc.common.util.imp import Exporter
+__all__ = ["WsgiAppHelper"]
+
+
 from mrbaviirc.common.app.base import BaseAppHelper
 
 from .request import Request
 from .response import Response
 
 
-export = Exporter(globals())
-
-
-@export
 class WsgiAppHelper(BaseAppHelper):
     """ A helper class for web applications. """
 
@@ -60,5 +58,3 @@ class WsgiAppHelper(BaseAppHelper):
     def handle_request(self, request):
         """ This method gets called by __call__ to perform request handling. """
         pass
-        
-
