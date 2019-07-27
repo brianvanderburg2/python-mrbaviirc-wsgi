@@ -11,7 +11,9 @@ __all__ = ["WsgiAppHelper"]
 
 
 from mrbaviirc.common.app.base import BaseAppHelper
+from mrbaviirc.common.logging import SharedLogFile
 
+from .dispatcher import Dispatcher
 from .request import Request
 from .response import Response
 
@@ -23,10 +25,44 @@ class WsgiAppHelper(BaseAppHelper):
         """ Initialize a web application. """
         BaseAppHelper.__init__(self)
 
-    def setup(self):
-        """ Set up the web app. """
+        # Register our factories
         self.register_factory("webapp.request", Request)
         self.register_factory("webapp.response", Response)
+        self.register_singleton("webapp.dispatcher", Dispatcher)
+
+        # Log file related
+        def _get_logfile(opt):
+            filename = self.get_config(opt)
+            if filename is None:
+                raise LookupError("Log file not specified: " + opt)
+            return SharedLogFile(filename)
+
+        self.register_singleton(
+            "webapp.logfile.error",
+            lambda: _get_logfile("webapp.logfile.error")
+        )
+        self.register_singleton(
+            "webapp.logfile.request",
+            lambda: _get_logfile("webapp.logfile.request")
+        )
+
+        self.set_config("webapp.logfile.error", None)
+        self.set_config("webapp.logfile.request", None)
+
+    @property
+    def dispatcher(self):
+        """ Return this dispatcher. """
+        return self.get_singleton("webapp.dispatcher")
+
+    @property
+    def error_log(self):
+        """ Get the error log. """
+        return self.get_singleton("webapp.logfile.error")
+
+    @property
+    def request_log(self):
+        """ Get the request log. """
+        return self.get_singleton("webapp.logfile.request")
 
     def __call__(self, environ, start_response):
 
@@ -57,4 +93,4 @@ class WsgiAppHelper(BaseAppHelper):
 
     def handle_request(self, request):
         """ This method gets called by __call__ to perform request handling. """
-        pass
+        self.dispatcher.dispatch(request)

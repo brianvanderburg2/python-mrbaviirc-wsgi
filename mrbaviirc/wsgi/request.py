@@ -51,7 +51,7 @@ class Request(object):
         # Details about request
         self.scheme = environ.get("wsgi.scheme")
         self.request_uri = environ.get("REQUEST_URI", "")
-        self.method = environ.get("REQEUEST_METHOD", "UNKNOWN").lower()
+        self.method = environ.get("REQUEST_METHOD", "UNKNOWN").lower()
         self.path_info = environ.get("PATH_INFO", "")
         self.script_name = environ.get("SCRIPT_NAME", "")
         self.query_string = environ.get("QUERY_STRING", "")

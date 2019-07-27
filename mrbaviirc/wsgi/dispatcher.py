@@ -24,10 +24,10 @@ class Dispatcher:
         self._notfound_callback = None
         self._error_handler = None
 
-    def register(self, path, callback, name=None, method="GET"):
+    def register(self, path, callback, name=None, method="get"):
         """ Register a route to dispatch. """
 
-        method = method.upper()
+        method = method.lower()
         if method in self._routes:
             routes = self._routes[method]
         else:
@@ -35,10 +35,10 @@ class Dispatcher:
 
         routes.register(path, callback, name=name)
 
-    def get(self, name, params, method="GET"):
+    def get(self, name, params, method="get"):
         """ Get a path from a named route. """
 
-        method = method.upper()
+        method = method.lower()
         routes = self._routes.get(method, None)
         if routes is None:
             raise LookupError("No routes for method: " + method)
@@ -47,42 +47,45 @@ class Dispatcher:
 
     def dispatch(self, request):
         """ Dispatch a request to a callback. """
-        method = request.method.upper()
-        path = request.pathinfo
+        method = request.method.lower()
+        path = request.path_info
 
         routes = self._routes.get(method, None)
         if routes is None:
-            return self._notfound(request)
+            self._notfound(request)
+            return
 
         try:
             (callback, params) = routes.route(path)
         except LookupError:
-            return self._notfound(request)
+            self._notfound(request)
+            return
 
         try:
             request.params.update(params)
-            return callback(request)
+            callback(request)
+            return
         except Exception as ex:
             if self._error_handler:
-                return self._error_handler(ex)
+                self._error_handler(ex, request)
+                return
             raise
 
     def _notfound(self, request):
         """ Handle a not found route. """
         if self._notfound_callback:
-            return self._notfound_callback(request)
+            self._notfound_callback(request)
+            return
 
-        response = Response(request)
+        response = request.response
         response.status = 404
         response.content_type = "text/html"
         response.content = [
-            """<html><body>"""
-            """<h1>Not Found</h1>"""
-            """<p>The requested resource was not found on this server.</p>"""
-            """</body></html>"""
+            b"<html><body>"
+            b"<h1>Not Found</h1>"
+            b"<p>The requested resource was not found on this server.</p>"
+            b"</body></html>"
         ]
-
-        return response
 
     def set_notfound_callback(self, callback):
         """ Set the callback to use for a notfound result. """
