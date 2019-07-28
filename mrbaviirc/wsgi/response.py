@@ -79,7 +79,9 @@ class Response(object):
     def __init__(self, request):
         self.request = request
         self.app = request.app
+        self.reset()
 
+    def reset(self):
         self.status = 500 # If not set, default to server error
 
         self.headers = {}
