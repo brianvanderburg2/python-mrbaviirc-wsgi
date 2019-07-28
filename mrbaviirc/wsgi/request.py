@@ -2,9 +2,9 @@
 
 from __future__ import absolute_import
 
-__author__      =   "Brian Allen Vanderburg II"
-__copyright__   =   "Copyright (C) 2018 Brian Allen Vanderburg II"
-__license__     =   "Apache License 2.0"
+__author__ = "Brian Allen Vanderburg II"
+__copyright__ = "Copyright (C) 2018 Brian Allen Vanderburg II"
+__license__ = "Apache License 2.0"
 
 
 __all__ = ["Request"]
@@ -16,9 +16,9 @@ import tempfile
 import time
 from urllib.parse import urlsplit
 from urllib.parse import parse_qs
-    
 
 from mrbaviirc.common.util.functools import lazyprop
+
 
 class _FakeFile:
     """ A fake file-like object for initiating a callback every so often
@@ -40,16 +40,16 @@ class _FakeFile:
             size = None
 
         if readline:
-            fn = self._fp.readline
+            readfunc = self._fp.readline
         else:
-            fn = self._fp.read
+            readfunc = self._fp.read
 
         while True:
             size_to_read = self._threshold - self._current
             if size is not None:
                 size_to_read = min(size - this_total, size_to_read)
 
-            data = fn(size_to_read)
+            data = readfunc(size_to_read)
             this_data.append(data)
 
             this_total += len(data)
@@ -89,9 +89,9 @@ class _FieldStorage(cgi.FieldStorage):
         tmpdir = self.__dict__.get("_FieldStorage__tmpdir", None)
         if self._binary_file:
             return tempfile.TemporaryFile("wb+", dir=tmpdir)
-        else:
-            return tempfile.TemporaryFile("w+", dir=tmpdir,
-                encoding=self.encoding, newline="\n")
+            
+        return tempfile.TemporaryFile("w+", dir=tmpdir,
+            encoding=self.encoding, newline="\n")
 
 
 class _FileInfo:
@@ -100,7 +100,7 @@ class _FileInfo:
         self.filename = filename # Filename on upload
 
 
-class Request(object):
+class Request:
     """ Represent a request. """
 
     def __init__(self, app, environ):
@@ -121,7 +121,7 @@ class Request(object):
         self.wsgi_run_once = environ.get("wsgi.run_once", "")
         self.wsgi_input = environ.get("wsgi.input", None)
 
-        
+
         # Details about request
         self.scheme = environ.get("wsgi.scheme")
         self.request_uri = environ.get("REQUEST_URI", "")
@@ -152,14 +152,14 @@ class Request(object):
         if host is not None:
             # Get host, domain, and port (if possible) from host
             self.host = host
-            
+
             split = urlsplit("//{0}".format(host))
             self.domain = split.hostname
             if split.port:
                 self.port = int(split.port)
             else:
                 # port wasn't specified in host, determine from scheme
-                self.port = {"http": 80, "https": 443}.get(self.scheme) 
+                self.port = {"http": 80, "https": 443}.get(self.scheme)
         else:
             # Host not specified, build from parts
             self.domain = environ.get("SERVER_NAME")
@@ -169,7 +169,7 @@ class Request(object):
                 self.host = "{0}:{1}".format(self.domain, self.port)
             else:
                 self.port = {"http": 80, "https": 443}.get(self.scheme)
-                self.host = self.domain # Leave without :port 
+                self.host = self.domain # Leave without :port
 
         # Parse our query string
         self.get = parse_qs(self.query_string)
@@ -194,7 +194,6 @@ class Request(object):
             self._handle_post()
 
         # Handle sessions
-        # TODO
 
     def finalize(self):
         """ Cleanup the request. """
@@ -255,7 +254,7 @@ class Request(object):
                     valuelist = self.post.setdefault(item.name, [])
                     value = item.value
                     # I think cgi.FieldStorage already decodes the bytes, just to be sure
-                    if isinstance(value, bytes): 
+                    if isinstance(value, bytes):
                         value = value.decode("utf-8") # TODO - get encoding from request
                     if value is not None:
                         valuelist.append(str(value))
