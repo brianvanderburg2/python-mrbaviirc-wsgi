@@ -10,6 +10,10 @@ __license__ = "Apache License 2.0"
 __all__ = ["WsgiAppHelper"]
 
 
+import html
+import io
+import traceback
+
 from mrbaviirc.common.app.base import BaseAppHelper
 from mrbaviirc.common.logging import SharedLogFile
 
@@ -46,8 +50,16 @@ class WsgiAppHelper(BaseAppHelper):
             lambda: _get_logfile("webapp.logfile.request")
         )
 
+        # Configs
         self.set_config("webapp.logfile.error", None)
         self.set_config("webapp.logfile.request", None)
+
+        self.set_config("webapp.request.maxsize", 1024000)
+        self.set_config("webapp.request.maxtime", 30)
+
+    @property
+    def appname(self):
+        return "mrbaviirc.wsgi.app"
 
     @property
     def dispatcher(self):
@@ -67,30 +79,98 @@ class WsgiAppHelper(BaseAppHelper):
     def __call__(self, environ, start_response):
 
         # Create request object
-        request = self.call_factory("webapp.request", self, environ)
+        try:
+            request = self.call_factory("webapp.request", self, environ)
+        except Exception as ex: # pylint: disable=broad-except
+            self.handle_exception(ex)
+            start_response(
+                "500 Internal Server Error",
+                [("Content-Type", "text/html")]
+            )
+            return [
+                b"<html><body>"
+                b"<h1>Internal Server Error</h1>"
+                b"<p>An internal server error has occurred.</p>"
+                b"</body></html>"
+            ]
 
-        self.handle_request(request)
+        # Handle the request
+        try:
+            request.init()
+            self.handle_request(request)
+            request.finalize()
+        except Exception as ex: # pylint: disable=broad-except
+            self.handle_exception(ex, request)
 
-        response = request.response
-        start_response(
-            response.get_status(),
-            response.get_headers()
-        )
-        return response.content
-
-
-        # Start a timer
-        # Based on app settings, handle file upload/etc if needed
-        # Call handler
-        # Remove uploaded files if not moved
-        # from handler generate headers
-        # generate body
-
-        #request = Request(...)
-        #request.helper
-        #request.response
-        #...
+        # Return the response
+        try:
+            response = request.response
+            start_response(
+                response.get_status(),
+                response.get_headers()
+            )
+            return response.content
+        except Exception as ex: # pylint: disable=broad-except
+            self.handle_exception(ex)
+            start_response(
+                "500 Internal Server Error",
+                [("Content-Type", "text/html")]
+            )
+            return [
+                b"<html><body>"
+                b"<h1>Internal Server Error</h1>"
+                b"<p>An internal server error has occurred.</p>"
+                b"</body></html>"
+            ]
 
     def handle_request(self, request):
         """ This method gets called by __call__ to perform request handling. """
         self.dispatcher.dispatch(request)
+
+    def handle_exception(self, ex, request=None):
+        """ Handle an exception. """
+
+        try:
+            debug = bool(self.get_config("webapp.debug", False))
+        except ValueError:
+            debug = False
+
+        try:
+            tbcapture = io.StringIO()
+            traceback.print_exception(
+                etype=type(ex),
+                value=ex,
+                tb=ex.__traceback__,
+                file=tbcapture
+            )
+
+            self.error_log.write(tbcapture.getvalue() + "\n")
+            self.error_log.flush()
+            if request is None:
+                return
+
+            response = request.response
+            response.reset()
+            response.status = 500
+            response.content_type = "text/html"
+
+            if not debug:
+                response.content = [
+                    b"<html><body>"
+                    b"<h1>Internal Server Error</h1>"
+                    b"<p>An internal server error has occurred.</p>"
+                    b"</body></html>"
+                ]
+                return
+
+            response.content = [
+                b"<html><body>"
+                b"<h1>Exception Occurred</h1>"
+                b"<pre>" + html.escape(tbcapture.getvalue()).encode("utf-8") + b"</pre>"
+                b"</body></html>"
+            ]
+            return
+
+        except: # pylint: disable=bare-except
+            # Not ideal but we don't want to dump the exceptions to the user
+            pass
