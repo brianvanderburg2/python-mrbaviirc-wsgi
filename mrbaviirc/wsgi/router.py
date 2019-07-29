@@ -12,6 +12,8 @@ __all__ = ["Router"]
 from collections import OrderedDict
 import re
 
+from .error import RouteError
+
 
 class _RouteEntry:
     """ An entry for a route segment. """
@@ -29,7 +31,7 @@ class _RouteEntry:
         if not parts:
             if self.callback is None:
                 # Raise error so we can seach other branches to find router with callback
-                raise LookupError("No callback found.")
+                raise RouteError("No callback found.")
 
             return (self.callback, params)
 
@@ -40,7 +42,7 @@ class _RouteEntry:
         if part in self.static:
             try:
                 return self.static[part].find_match(parts[1:], params)
-            except LookupError:
+            except RouteError:
                 pass # Unable to find in static, we'll check dynamic next
 
         for (matchall, regex) in self.dynamic:
@@ -62,11 +64,11 @@ class _RouteEntry:
 
                 try:
                     return self.dynamic[(matchall, regex)].find_match(subparts, matched_params)
-                except LookupError:
+                except RouteError:
                     pass # Try next dynamic route
 
         # Got here with no match
-        raise LookupError("Unmatched path: " + "/".join(parts))
+        raise RouteError("Unmatched path: " + "/".join(parts))
 
 
 class Router:
@@ -113,8 +115,8 @@ class Router:
         """  split our route into individual components. """
 
         parts = route.split("/")
-        if parts[0] == "":
-            parts.pop(0)
+        # We keep any leading blanks here and in route, that way
+        # a route can be registered that matches empty PATHINFO as well
 
         if not parts:
             return []
@@ -192,8 +194,7 @@ class Router:
         """ Route a given request. """
 
         parts = path.split("/")
-        if parts[0] == "":
-            parts.pop(0)
+        # Keep leading blanks as well to be able to match empty PATHINFO
 
         params = {}
 
@@ -206,12 +207,12 @@ class Router:
     def get(self, name, params):
         """ Get a path from a named route. """
         if name not in self._named:
-            raise LookupError("No such named route: " + name)
+            raise RouteError("No such named route: " + name)
 
         def subfn(mo):
             key = mo.group(1)
             if key not in params:
-                raise LookupError("No parameter for named route: " + key)
+                raise RouteError("No parameter for named route: " + key)
 
             return str(params[key])
 

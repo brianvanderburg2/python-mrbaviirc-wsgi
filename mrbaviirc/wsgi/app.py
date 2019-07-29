@@ -18,6 +18,7 @@ from mrbaviirc.common.app.base import BaseAppHelper
 from mrbaviirc.common.logging import SharedLogFile
 
 from .dispatcher import Dispatcher
+from .error import *
 from .request import Request
 from .response import Response
 
@@ -38,7 +39,7 @@ class WsgiAppHelper(BaseAppHelper):
         def _get_logfile(opt):
             filename = self.get_config(opt)
             if filename is None:
-                raise LookupError("Log file not specified: " + opt)
+                raise ConfigError("Log file not specified: " + opt)
             return SharedLogFile(filename)
 
         self.register_singleton(
@@ -51,6 +52,8 @@ class WsgiAppHelper(BaseAppHelper):
         )
 
         # Configs
+        self.set_config("webapp.debug", False)
+
         self.set_config("webapp.logfile.error", None)
         self.set_config("webapp.logfile.request", None)
 

@@ -19,6 +19,8 @@ from urllib.parse import parse_qs
 
 from mrbaviirc.common.util.functools import lazyprop
 
+from .error import RequestToLargeError, RequestTimeoutError
+
 
 class _FakeFile:
     """ A fake file-like object for initiating a callback every so often
@@ -123,7 +125,7 @@ class Request:
 
 
         # Details about request
-        self.scheme = environ.get("wsgi.scheme")
+        self.scheme = environ.get("wsgi.url_scheme")
         self.request_uri = environ.get("REQUEST_URI", "")
         self.method = environ.get("REQUEST_METHOD", "UNKNOWN").lower()
         self.path_info = environ.get("PATH_INFO", "")
@@ -215,10 +217,10 @@ class Request:
             max_request_time = 30
 
         if bytes_read > max_request_size:
-            raise OverflowError("Request body size exceeded maximum size of " + str(max_request_size))
+            raise RequestToLargeError("Request body size exceeded maximum size of " + str(max_request_size))
 
         if time.monotonic() - self.timer > max_request_time:
-            raise TimeoutError("Request time exceeded maximum time of " + str(max_request_time))
+            raise RequestTimeoutError("Request time exceeded maximum time of " + str(max_request_time))
 
     def _handle_post(self):
         """ Handle any POST data. """

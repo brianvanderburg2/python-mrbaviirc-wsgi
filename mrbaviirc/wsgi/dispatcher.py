@@ -10,6 +10,7 @@ __license__ = "Apache License 2.0"
 __all__ = ["Dispatcher"]
 
 
+from .error import RouteError
 from .response import Response
 from .router import Router
 
@@ -41,7 +42,7 @@ class Dispatcher:
         method = method.lower()
         routes = self._routes.get(method, None)
         if routes is None:
-            raise LookupError("No routes for method: " + method)
+            raise RouteError("No routes for method: " + method)
 
         return routes.get(name, params)
 
@@ -57,7 +58,7 @@ class Dispatcher:
 
         try:
             (callback, params) = routes.route(path)
-        except LookupError:
+        except RouteError:
             self._notfound(request)
             return
 
