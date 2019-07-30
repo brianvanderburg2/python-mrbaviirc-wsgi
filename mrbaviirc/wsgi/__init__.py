@@ -7,7 +7,9 @@ __copyright__ = "Copyright (C) 2018 Brian Allen Vanderburg II"
 __license__ = "Apache License 2.0"
 
 
-__all__ = ["WsgiAppHelper", "Dispatcher", "Request", "Response", "Router"]
+__all__ = [
+    "WsgiApphelper", "Dispatcher", "Request", "Response", "Router"
+]
 
 
 from .app import WsgiAppHelper
@@ -15,3 +17,8 @@ from .dispatcher import Dispatcher
 from .request import Request
 from .response import Response
 from .router import Router
+
+from .error import *
+from .error import __all__ as _error__all
+__all__.extend(_error__all)
+del _error__all
