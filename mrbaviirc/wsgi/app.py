@@ -7,83 +7,74 @@ __copyright__ = "Copyright (C) 2018 Brian Allen Vanderburg II"
 __license__ = "Apache License 2.0"
 
 
-__all__ = ["WsgiAppHelper"]
+__all__ = ["WsgiApp"]
 
 
 import html
 import io
 import traceback
 
-from mrbaviirc.common.app.base import BaseAppHelper
+from mrbaviirc.common.app import BaseApp
+from mrbaviirc.common.functools import lazy_property
 from mrbaviirc.common.logging import SharedLogFile
 
 from .dispatcher import Dispatcher
-from .error import *
+from .error import * # pylint: disable=wildcard-import,unused-wildcard-import
 from .request import Request
-from .response import Response
 
 
-class WsgiAppHelper(BaseAppHelper):
+class WsgiApp(BaseApp):
     """ A helper class for web applications. """
 
     def __init__(self):
         """ Initialize a web application. """
-        BaseAppHelper.__init__(self)
-
-        # Register our factories
-        self.register_factory("webapp.request", Request)
-        self.register_factory("webapp.response", Response)
-        self.register_singleton("webapp.dispatcher", Dispatcher)
-
-        # Log file related
-        def _get_logfile(opt):
-            filename = self.get_config(opt)
-            if filename is None:
-                raise ConfigError("Log file not specified: " + opt)
-            return SharedLogFile(filename)
-
-        self.register_singleton(
-            "webapp.logfile.error",
-            lambda: _get_logfile("webapp.logfile.error")
-        )
-        self.register_singleton(
-            "webapp.logfile.request",
-            lambda: _get_logfile("webapp.logfile.request")
-        )
+        BaseApp.__init__(self)
 
         # Configs
-        self.set_config("webapp.debug", False)
+        self.config.set("webapp.debug", False)
 
-        self.set_config("webapp.logfile.error", None)
-        self.set_config("webapp.logfile.request", None)
+        self.config.set("webapp.logfile.error", None)
+        self.config.set("webapp.logfile.request", None)
 
-        self.set_config("webapp.request.maxsize", 1024000)
-        self.set_config("webapp.request.maxtime", 30)
+        self.config.set("webapp.request.maxsize", 1024000)
+        self.config.set("webapp.request.maxtime", 30)
+
+    def create_request(self, environ):
+        """ Create the request object. """
+        return Request(self, environ)
 
     @property
     def appname(self):
+        # pylint: disable=no-self-use
         return "mrbaviirc.wsgi.app"
 
-    @property
+    @lazy_property
     def dispatcher(self):
+        # pylint: disable=no-self-use
         """ Return this dispatcher. """
-        return self.get_singleton("webapp.dispatcher")
+        return Dispatcher()
 
-    @property
+    @lazy_property
     def error_log(self):
         """ Get the error log. """
-        return self.get_singleton("webapp.logfile.error")
+        filename = self.config.get("webapp.logfile.error")
+        if filename is None:
+            raise ConfigError("webapp.logfile.error not configured")
+        return SharedLogFile(filename)
 
-    @property
+    @lazy_property
     def request_log(self):
         """ Get the request log. """
-        return self.get_singleton("webapp.logfile.request")
+        filename = self.config.get("webapp.logfile.request")
+        if filename is None:
+            raise ConfigError("webapp.logfile.request not configured")
+        return SharedLogFile(filename)
 
     def __call__(self, environ, start_response):
 
         # Create request object
         try:
-            request = self.call_factory("webapp.request", self, environ)
+            request = self.create_request(environ)
         except Exception as ex: # pylint: disable=broad-except
             self.handle_exception(ex)
             start_response(
@@ -134,7 +125,7 @@ class WsgiAppHelper(BaseAppHelper):
         """ Handle an exception. """
 
         try:
-            debug = bool(self.get_config("webapp.debug", False))
+            debug = bool(self.config.get("webapp.debug", False))
         except ValueError:
             debug = False
 

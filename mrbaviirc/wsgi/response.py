@@ -10,7 +10,8 @@ __license__ = "Apache License 2.0"
 __all__ = ["Response"]
 
 
-class Response(object):
+class Response:
+    """ Represent a response to a request. """
 
     STATUS_CODES = {
         100: "Continue",
@@ -77,11 +78,13 @@ class Response(object):
     }
 
     def __init__(self, request):
+        """ Initialize the response. """
         self.request = request
         self.app = request.app
         self.reset()
 
     def reset(self):
+        """ Reset the response. """
         self.status = 500 # If not set, default to server error
 
         self.headers = {}
@@ -92,6 +95,7 @@ class Response(object):
         self.content = ()
 
     def get_headers(self):
+        """ Get the headers of the response. """
         headers = []
         if self.content_type:
             headers.append(("Content-Type", self.content_type))
@@ -100,6 +104,7 @@ class Response(object):
             headers.append((name, value))
 
         return headers
-        
+
     def get_status(self):
+        """ Get the status line of the response. """
         return "{0} {1}".format(str(self.status), str(self.STATUS_CODES[self.status]))

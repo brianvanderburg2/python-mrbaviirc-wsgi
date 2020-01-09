@@ -8,11 +8,11 @@ __license__ = "Apache License 2.0"
 
 
 __all__ = [
-    "WsgiApphelper", "Dispatcher", "Request", "Response", "Router"
+    "WsgiApp", "Dispatcher", "Request", "Response", "Router"
 ]
 
 
-from .app import WsgiAppHelper
+from .app import WsgiApp
 from .dispatcher import Dispatcher
 from .request import Request
 from .response import Response

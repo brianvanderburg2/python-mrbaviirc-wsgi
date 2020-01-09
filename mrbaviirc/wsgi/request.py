@@ -11,21 +11,23 @@ __all__ = ["Request"]
 
 
 import cgi
-from http.cookies import SimpleCookie, CookieError
+from http.cookies import SimpleCookie #, CookieError
 import tempfile
 import time
 from urllib.parse import urlsplit
 from urllib.parse import parse_qs
 
-from mrbaviirc.common.util.functools import lazyprop
+from mrbaviirc.common.functools import lazy_property
 
 from .error import RequestToLargeError, RequestTimeoutError
+from .response import Response
 
 
 class _FakeFile:
     """ A fake file-like object for initiating a callback every so often
-        on reading data. For use with cgi.FieldStorage.  The read and readline
-        methods of the fp object should return bytes."""
+    on reading data. For use with cgi.FieldStorage.  The read and readline
+    methods of the fp object should return bytes."""
+
     def __init__(self, fp, callback, threshold=1024000):
         self._fp = fp
         self._callback = callback
@@ -73,9 +75,11 @@ class _FakeFile:
                 return b''.join(this_data)
 
     def read(self, size=None):
+        """ Read data. """
         return self._fake_read(size, readline=False)
 
     def readline(self, size=None):
+        """ Read line. """
         return self._fake_read(size, readline=True)
 
 
@@ -91,9 +95,10 @@ class _FieldStorage(cgi.FieldStorage):
         tmpdir = self.__dict__.get("_FieldStorage__tmpdir", None)
         if self._binary_file:
             return tempfile.TemporaryFile("wb+", dir=tmpdir)
-            
-        return tempfile.TemporaryFile("w+", dir=tmpdir,
-            encoding=self.encoding, newline="\n")
+
+        return tempfile.TemporaryFile(
+            "w+", dir=tmpdir, encoding=self.encoding, newline="\n"
+        )
 
 
 class _FileInfo:
@@ -199,28 +204,30 @@ class Request:
 
     def finalize(self):
         """ Cleanup the request. """
-        pass
-
 
     def _handle_post_callback(self, bytes_read):
         """ Callback for reading info into field storage. """
 
         self.request_size = bytes_read
         try:
-            max_request_size = int(self.app.get_config("webapp.request.maxsize", 102400))
+            max_request_size = int(self.app.config.get("webapp.request.maxsize", 102400))
         except ValueError:
             max_request_size = 102400
 
         try:
-            max_request_time = int(self.app.get_config("webapp.request.maxtime", 30))
+            max_request_time = int(self.app.config.get("webapp.request.maxtime", 30))
         except ValueError:
             max_request_time = 30
 
         if bytes_read > max_request_size:
-            raise RequestToLargeError("Request body size exceeded maximum size of " + str(max_request_size))
+            raise RequestToLargeError(
+                "Request body size exceeded maximum size of " + str(max_request_size)
+            )
 
         if time.monotonic() - self.timer > max_request_time:
-            raise RequestTimeoutError("Request time exceeded maximum time of " + str(max_request_time))
+            raise RequestTimeoutError(
+                "Request time exceeded maximum time of " + str(max_request_time)
+            )
 
     def _handle_post(self):
         """ Handle any POST data. """
@@ -228,7 +235,7 @@ class Request:
         fakefile = _FakeFile(self.wsgi_input, self._handle_post_callback)
 
         # We do not want FieldStorage to get parameters from QUERY_STRING
-        tmpdir = self.app.get_config("webapp.upload.tmpdir", None)
+        tmpdir = self.app.config.get("webapp.upload.tmpdir", None)
         postenv = self.environ.copy()
         postenv["QUERY_STRING"] = "" # Don't want POST getting fields from query string
         form = _FieldStorage(fp=fakefile, environ=postenv, keep_blank_values=True, tmpdir=tmpdir)
@@ -263,7 +270,7 @@ class Request:
 
         # TODO: Check webapp.upload.maxcount/maxfilesize
 
-    @lazyprop
+    @lazy_property
     def response(self):
         """ Create our response object for this request. """
-        return self.app.call_factory("webapp.response", self)
+        return Response(self)

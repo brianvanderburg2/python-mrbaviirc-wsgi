@@ -11,7 +11,6 @@ __all__ = ["Dispatcher"]
 
 
 from .error import RouteError
-from .response import Response
 from .router import Router
 
 
