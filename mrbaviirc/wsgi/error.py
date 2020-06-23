@@ -6,12 +6,15 @@ __license__ = "Apache License 2.0"
 
 
 __all__ = [
-    "Error", "RequestError", "RequestToLargeError", "RequestTimeoutError"
+    "Error", "AppError", "RouteError", "RequestError"
 ]
 
 
 class Error(Exception):
     """ A basic error for mrbaviirc.wsgi. """
+    pass
+
+class AppError(Error):
     pass
 
 class ConfigError(Error):
@@ -22,12 +25,5 @@ class RouteError(Error):
 
 class RequestError(Error):
     pass
-
-class RequestToLargeError(RequestError):
-    pass
-
-class RequestTimeoutError(RequestError):
-    pass
-
 
 

@@ -13,9 +13,7 @@ __all__ = [
 
 
 from .app import WsgiApp
-from .dispatcher import Dispatcher
-from .request import Request
-from .response import Response
+from .exchange import Request, Response, Exchange
 from .router import Router
 
 from .error import *

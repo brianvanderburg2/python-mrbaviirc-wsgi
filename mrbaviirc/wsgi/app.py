@@ -14,14 +14,15 @@ import html
 import io
 import traceback
 
+import logging
+
 from mrbaviirc.common.app import BaseApp
 from mrbaviirc.common.functools import lazy_property
 from mrbaviirc.common.logging import SharedLogFile
 
-from .dispatcher import Dispatcher
+from .router import Router
 from .error import * # pylint: disable=wildcard-import,unused-wildcard-import
-from .request import Request
-
+from .exchange import Exchange
 
 class WsgiApp(BaseApp):
     """ A helper class for web applications. """
@@ -33,76 +34,87 @@ class WsgiApp(BaseApp):
         # Configs
         self.config.set("webapp.debug", False)
 
-        self.config.set("webapp.logfile.error", None)
-        self.config.set("webapp.logfile.request", None)
+        # Properties
+        self.__startup_called = False
 
-        self.config.set("webapp.request.maxsize", 1024000)
-        self.config.set("webapp.request.maxtime", 30)
+        self.router = Router()
 
-    def create_request(self, environ):
-        """ Create the request object. """
-        return Request(self, environ)
+        # TODO: better logging
+        # leave request logging to the application server (apache/etc)
+        # leave error logging as well, just write errors to stderr)
+        self._logger = logging.getLogger(self.appname)
+        self._logger.propagate = False
+        self._logger.addHandler(logging.StreamHandler())
+
+    def startup(self):
+        """ Startup the application.
+            This must be called after the application is created but before
+            it is used for request handling. If the "run" method is used
+            it automatically calls startup.
+        """
+        BaseApp.startup(self)
+        self.__startup_called = True
 
     @property
     def appname(self):
         # pylint: disable=no-self-use
         return "mrbaviirc.wsgi.app"
 
-    @lazy_property
-    def dispatcher(self):
-        # pylint: disable=no-self-use
-        """ Return this dispatcher. """
-        return Dispatcher()
+    def create_exchange(self, environ):
+        """ Create the exchange object.
+        """
+        return Exchange(self, environ)
 
-    @lazy_property
-    def error_log(self):
-        """ Get the error log. """
-        filename = self.config.get("webapp.logfile.error")
-        if filename is None:
-            raise ConfigError("webapp.logfile.error not configured")
-        return SharedLogFile(filename)
+    def route(self, path, method="GET", name=None):
+        def wrapper(fn):
+            self.router.register(path, fn, method=method, name=name)
+            return fn
+        return wrapper
 
-    @lazy_property
-    def request_log(self):
-        """ Get the request log. """
-        filename = self.config.get("webapp.logfile.request")
-        if filename is None:
-            raise ConfigError("webapp.logfile.request not configured")
-        return SharedLogFile(filename)
+    def run(self, host, port, threaded=False, processes=1):
+        """ Run the app. """
+        if not self.__startup_called:
+            self.startup()
+
+        from werkzeug.serving import run_simple
+
+        run_simple(host, port, self, threaded=threaded, processes=processes)
+
+        # call shutdown even though it normally isn't used since other methods
+        # of serving may not provide support to call the shutdown method
+        self.shutdown()
 
     def __call__(self, environ, start_response):
+        """ Handle a request call """
 
-        # Create request object
-        try:
-            request = self.create_request(environ)
-        except Exception as ex: # pylint: disable=broad-except
-            self.handle_exception(ex)
-            start_response(
-                "500 Internal Server Error",
-                [("Content-Type", "text/html")]
-            )
-            return [
-                b"<html><body>"
-                b"<h1>Internal Server Error</h1>"
-                b"<p>An internal server error has occurred.</p>"
-                b"</body></html>"
-            ]
+        if not self.__startup_called:
+            raise AppError("startup must be called before requests are handled")
 
-        # Handle the request
+        exchange = self.create_exchange(environ)
+
+        # Process request
         try:
-            request.init()
-            self.handle_request(request)
-            request.finalize()
+            exchange.start()
+            self.handle_request(exchange)
+            exchange.finalize()
         except Exception as ex: # pylint: disable=broad-except
-            self.handle_exception(ex, request)
+            self.handle_exception(ex, exchange)
 
         # Return the response
+        response = exchange.response
         try:
-            response = request.response
             start_response(
                 response.get_status(),
                 response.get_headers()
             )
+
+            # Build return based on type
+            if isinstance(response.content, str):
+                return [response.content.encode("utf-8")]
+
+            if isinstance(response.content, bytes):
+                return [response.content]
+
             return response.content
         except Exception as ex: # pylint: disable=broad-except
             self.handle_exception(ex)
@@ -117,11 +129,22 @@ class WsgiApp(BaseApp):
                 b"</body></html>"
             ]
 
-    def handle_request(self, request):
+    def handle_request(self, exchange):
         """ This method gets called by __call__ to perform request handling. """
-        self.dispatcher.dispatch(request)
+        request = exchange.request
+        method = request.method.upper()
+        path = request.path_info
 
-    def handle_exception(self, ex, request=None):
+        # Find route
+        result = self.router.route(path, method=method)
+        if result is None:
+            self.handle_notfound(exchange)
+        else:
+            (route, params) = result
+            request.params.update(params)
+            route(exchange)
+
+    def handle_exception(self, ex, exchange=None):
         """ Handle an exception. """
 
         try:
@@ -129,42 +152,57 @@ class WsgiApp(BaseApp):
         except ValueError:
             debug = False
 
+        # Get the traceback
+        tbcapture = io.StringIO()
+        traceback.print_exception(
+            etype=type(ex),
+            value=ex,
+            tb=ex.__traceback__,
+            file=tbcapture
+        )
+
+        error_message = tbcapture.getvalue()
+
+        # Write to the error log
+        self._logger.error(error_message)
+
+        # Write to the client
+        if exchange is None:
+            return
+
         try:
-            tbcapture = io.StringIO()
-            traceback.print_exception(
-                etype=type(ex),
-                value=ex,
-                tb=ex.__traceback__,
-                file=tbcapture
-            )
-
-            self.error_log.write(tbcapture.getvalue() + "\n")
-            self.error_log.flush()
-            if request is None:
-                return
-
-            response = request.response
+            response = exchange.response
             response.reset()
             response.status = 500
             response.content_type = "text/html"
 
             if not debug:
-                response.content = [
-                    b"<html><body>"
-                    b"<h1>Internal Server Error</h1>"
-                    b"<p>An internal server error has occurred.</p>"
-                    b"</body></html>"
-                ]
+                response.content = (
+                    "<html><body>"
+                    "<h1>Internal Server Error</h1>"
+                    "<p>An internal server error has occurred.</p>"
+                    "</body></html>"
+                )
                 return
 
-            response.content = [
-                b"<html><body>"
-                b"<h1>Exception Occurred</h1>"
-                b"<pre>" + html.escape(tbcapture.getvalue()).encode("utf-8") + b"</pre>"
-                b"</body></html>"
-            ]
+            response.content = (
+                "<html><body>"
+                "<h1>Exception Occurred</h1>"
+                "<pre>" + html.escape(error_message) + "</pre>"
+                "</body></html>"
+            )
             return
 
         except: # pylint: disable=bare-except
             # Not ideal but we don't want to dump the exceptions to the user
             pass
+
+    def handle_notfound(self, exchange):
+        request = exchange.request
+        response = exchange.response
+
+        response.status = 404
+        response.content_type = "text/html"
+        response.content = (
+            "The requested page could not be found.  Please try again."
+        )

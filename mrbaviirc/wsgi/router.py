@@ -1,4 +1,4 @@
-""" Route requests. """
+""" Store and lookup path to route maps. """
 
 from __future__ import absolute_import
 
@@ -15,36 +15,34 @@ import re
 from .error import RouteError
 
 
-class _RouteEntry:
-    """ An entry for a route segment. """
+class _PathSegment:
+    """ An entry for a path segment. """
 
     def __init__(self):
-        """ Initialize our subroutes and target for self. """
+        """ Initialize our subpath segments and route for this segment. """
         self.static = OrderedDict() # Dict keys are path component
         self.dynamic = OrderedDict() # Dict keys are (matchall, regex)
-        self.callback = None
+        self.route = None
 
     def find_match(self, parts, params):
         """ Find a submatch of the given path. """
 
         # No more parts, we are the match
         if not parts:
-            if self.callback is None:
-                # Raise error so we can seach other branches to find router with callback
-                raise RouteError("No callback found.")
+            if self.route is not None:
+                return (self.route, params)
 
-            return (self.callback, params)
-
+            return None
 
         part = parts[0]
 
         # Check the static first
         if part in self.static:
-            try:
-                return self.static[part].find_match(parts[1:], params)
-            except RouteError:
-                pass # Unable to find in static, we'll check dynamic next
+            result = self.static[part].find_match(parts[1:], params)
+            if result is not None:
+                return result
 
+        # Unable to find in static, we'll check dynamic next
         for (matchall, regex) in self.dynamic:
             if matchall:
                 matchpart = "/".join(parts)
@@ -53,7 +51,7 @@ class _RouteEntry:
 
             matched = regex.match(matchpart)
             if matched:
-                # clone so if subroutes fail we don't mess up parent route parameters
+                # clone so if subpath segments fail we don't mess up parent path parameters
                 matched_params = dict(params)
                 matched_params.update(matched.groupdict())
 
@@ -62,61 +60,68 @@ class _RouteEntry:
                 else:
                     subparts = parts[1:]
 
-                try:
-                    return self.dynamic[(matchall, regex)].find_match(subparts, matched_params)
-                except RouteError:
-                    pass # Try next dynamic route
+                result = self.dynamic[(matchall, regex)].find_match(subparts, matched_params)
+                if result is not None:
+                    return result
 
         # Got here with no match
-        raise RouteError("Unmatched path: " + "/".join(parts))
+        return None
 
 
 class Router:
-    """ Route a request. """
+    """ A path -> router router. """
 
     _VAR_SPLIT_RE = re.compile("(<.*?>)")
     _NAMED_STRIP_RE = re.compile("<([a-zA-Z0-9_]+)(:[^>]+)?>")
     _NAMED_REPLACE_RE = re.compile("<([a-zA-Z0-9_]+)>")
 
+
     def __init__(self):
-        """ Initialize router. """
+        """ Initialize the method entry. """
 
-        self._routes = _RouteEntry()
-        self._named = {}
+        self._routes = {} # path -> route for each method
+        self._named = {} # name -> path for each method
 
-        # We keep our own route cache to ensure identical regular expressions
-        # are represented by the same tree node, even if for some reason the
-        # Python compiled RE cache gets cleared between route additions.
+        # We keep our own regex cache to ensure identical regular expressions
+        # always match the same regex compiled object even if the python
+        # internal cache is cleared
         self._re_cache = {}
 
-    def register(self, route, callback, name=None):
-        """ Register a given route. """
+    def register(self, path, route, name=None, method="GET"):
+        """ Register a path to a given route. """
+
+        method = method.upper()
+        if method in self._routes:
+            target = self._routes[method]
+        else:
+            target = self._routes[method] = _PathSegment()
 
         # Register the path -> route
-        segments = self._split(route)
-        target = self._routes
-
+        segments = self._split_path(path)
         for part in segments:
             if isinstance(part, tuple):
-                target = target.dynamic.setdefault(part, _RouteEntry())
+                target = target.dynamic.setdefault(part, _PathSegment())
             else:
-                target = target.static.setdefault(part, _RouteEntry())
+                target = target.static.setdefault(part, _PathSegment())
 
-        target.callback = callback
+        target.route = route
 
         # Register the name -> path
         if name is not None:
-            self._named[name] = self._NAMED_STRIP_RE.sub(
+            if method not in self._named:
+                self._named[method] = {}
+
+            self._named[method][name] = self._NAMED_STRIP_RE.sub(
                 "<\\1>",
-                route
+                path
             )
 
-    def _split(self, route):
-        """  split our route into individual components. """
+    def _split_path(self, path):
+        """  split our path into individual components. """
 
-        parts = route.split("/")
-        # We keep any leading blanks here and in route, that way
-        # a route can be registered that matches empty PATHINFO as well
+        parts = path.split("/")
+        # We keep any leading blanks that way a path can be registered that
+        # matches empty PATHINFO as well
 
         if not parts:
             return []
@@ -146,7 +151,9 @@ class Router:
 
             # If this was regex, then compile it, else no changes
             if re_found:
-                # Reuse the same regex from cache if already compiled
+                # Reuse the same regex from cache if already compiled to ensure
+                # matching regex adds under a given segmetn always go to the same
+                # _PathSegment object
                 regex_str = "^" + "".join(matches) + "$"
                 regex = self._re_cache.get(regex_str, None)
                 if regex is None:
@@ -190,30 +197,34 @@ class Router:
 
         return (matchall, "(?P<{0}>{1})".format(name, regex))
 
-    def route(self, path):
-        """ Route a given request. """
-
+    def route(self, path, method="GET"):
+        """ For a given path return the route or None. """
+        method = method.upper()
         parts = path.split("/")
         # Keep leading blanks as well to be able to match empty PATHINFO
 
+        if method not in self._routes:
+            return None
+
         params = {}
+        return self._routes[method].find_match(parts, params)
 
-        # We do recursive lookup so if a match isn't found in one path of the
-        # registered trees (such as a static name), but another path such as
-        # a regex can match, it will still return a result.  Will also handle
-        # if two different regex patterns may match a result.
-        return self._routes.find_match(parts, params)
+    def get(self, name, params, method="GET"):
+        """ Get a path from a named entry. """
+        method = method.upper()
+        if method not in self._named:
+            raise RouteError("No such named path: " + name)
 
-    def get(self, name, params):
-        """ Get a path from a named route. """
-        if name not in self._named:
-            raise RouteError("No such named route: " + name)
+        if name not in self._named[method]:
+            raise RouteError("No such named path: " + name)
 
         def subfn(mo):
             key = mo.group(1)
             if key not in params:
-                raise RouteError("No parameter for named route: " + key)
+                raise RouteError("No parameter for named path: " + key)
 
             return str(params[key])
 
-        return self._NAMED_REPLACE_RE.sub(subfn, self._named[name])
+        return self._NAMED_REPLACE_RE.sub(subfn, self._named[method][name])
+
+

@@ -1,13 +1,13 @@
-""" Web app request base class. """
+""" An exchange represents a request and a response. """
 
 from __future__ import absolute_import
 
 __author__ = "Brian Allen Vanderburg II"
-__copyright__ = "Copyright (C) 2018 Brian Allen Vanderburg II"
+__copyright__ = "Copyright (C) 2018-2020 Brian Allen Vanderburg II"
 __license__ = "Apache License 2.0"
 
 
-__all__ = ["Request"]
+__all__ = ["Exchange", "Request", "Response"]
 
 
 import cgi
@@ -18,69 +18,6 @@ from urllib.parse import urlsplit
 from urllib.parse import parse_qs
 
 from mrbaviirc.common.functools import lazy_property
-
-from .error import RequestToLargeError, RequestTimeoutError
-from .response import Response
-
-
-class _FakeFile:
-    """ A fake file-like object for initiating a callback every so often
-    on reading data. For use with cgi.FieldStorage.  The read and readline
-    methods of the fp object should return bytes."""
-
-    def __init__(self, fp, callback, threshold=1024000):
-        self._fp = fp
-        self._callback = callback
-        self._threshold = threshold if threshold > 0 else 1024000
-        self._current = 0
-        self._bytes_read = 0
-
-    def _fake_read(self, size, readline=False):
-        """ Read some of the file. """
-
-        this_total = 0
-        this_data = []
-        if size is not None and size <= 0:
-            size = None
-
-        if readline:
-            readfunc = self._fp.readline
-        else:
-            readfunc = self._fp.read
-
-        while True:
-            size_to_read = self._threshold - self._current
-            if size is not None:
-                size_to_read = min(size - this_total, size_to_read)
-
-            data = readfunc(size_to_read)
-            this_data.append(data)
-
-            this_total += len(data)
-            self._current += len(data)
-            self._bytes_read += len(data)
-
-            if self._current >= self._threshold:
-                self._current = 0
-                self._callback(self._bytes_read)
-
-            if (size is not None and this_total >= size) or len(data) == 0:
-                # Call callback one more time with final size read
-                self._callback(self._bytes_read)
-                return b''.join(this_data)
-
-            if readline and this_data[-1][-1:] == b"\n":
-                # Handle if this was a readline, return on end of line
-                self._callback(self._bytes_read)
-                return b''.join(this_data)
-
-    def read(self, size=None):
-        """ Read data. """
-        return self._fake_read(size, readline=False)
-
-    def readline(self, size=None):
-        """ Read line. """
-        return self._fake_read(size, readline=True)
 
 
 class _FieldStorage(cgi.FieldStorage):
@@ -110,17 +47,18 @@ class _FileInfo:
 class Request:
     """ Represent a request. """
 
-    def __init__(self, app, environ):
-        self.app = app
-        self.environ = environ
+    def __init__(self, exchange):
+        """ Initialize the request"""
+        self.exchange = exchange
 
-        self.cookies = {}
-        self.get = {}
-        self.post = {}
+        environ = exchange.environ
+
+        self.cookies = {} # name:value pairs for cookies
+        self.get = {} # name: [value, value] GET data
+        self.post = {} # name: [value, value] POST data
         self.params = {} # Parsed from router
         self.userdata = {} # Customer parameters to pass around
-        self.files = {}
-        self.timer = None
+        self.files = {} # Parsed by upload
 
         # wsgi specific information
         self.wsgi_multithreaded = environ.get("wsgi.multithread", "")
@@ -132,15 +70,14 @@ class Request:
         # Details about request
         self.scheme = environ.get("wsgi.url_scheme")
         self.request_uri = environ.get("REQUEST_URI", "")
-        self.method = environ.get("REQUEST_METHOD", "UNKNOWN").lower()
+        self.method = environ.get("REQUEST_METHOD", "UNKNOWN").upper()
         self.path_info = environ.get("PATH_INFO", "")
         self.script_name = environ.get("SCRIPT_NAME", "")
         self.query_string = environ.get("QUERY_STRING", "")
         self.user_agent = environ.get("HTTP_USER_AGENT", "")
         self.remote_addr = environ.get("REMOTE_ADDR", "")
 
-        self.request_size = 0
-        if self.method == "post":
+        if self.method == "POST":
             self.content_type = environ.get(
                 "CONTENT_TYPE",
                 "application/x-www-form-urlencoded"
@@ -152,7 +89,6 @@ class Request:
         else:
             self.content_type = ""
             self.content_length = 0
-
 
         # Determine host, domain, and port
         host = environ.get("HTTP_HOST", None)
@@ -189,56 +125,19 @@ class Request:
         else:
             self.cookies = {}
 
-    def init(self):
-        """ Initialize the request. """
-        # TODO: some of the above should probably be moved here. Or perhaps
-        # All of this should be in __init__
-
-        self.timer = time.monotonic()
-
         # Handle POST request
-        if self.method == "post":
+        if self.method == "POST":
             self._handle_post()
-
-        # Handle sessions
-
-    def finalize(self):
-        """ Cleanup the request. """
-
-    def _handle_post_callback(self, bytes_read):
-        """ Callback for reading info into field storage. """
-
-        self.request_size = bytes_read
-        try:
-            max_request_size = int(self.app.config.get("webapp.request.maxsize", 102400))
-        except ValueError:
-            max_request_size = 102400
-
-        try:
-            max_request_time = int(self.app.config.get("webapp.request.maxtime", 30))
-        except ValueError:
-            max_request_time = 30
-
-        if bytes_read > max_request_size:
-            raise RequestToLargeError(
-                "Request body size exceeded maximum size of " + str(max_request_size)
-            )
-
-        if time.monotonic() - self.timer > max_request_time:
-            raise RequestTimeoutError(
-                "Request time exceeded maximum time of " + str(max_request_time)
-            )
 
     def _handle_post(self):
         """ Handle any POST data. """
+        app = self.exchange.app
+        environ = self.exchange.environ
 
-        fakefile = _FakeFile(self.wsgi_input, self._handle_post_callback)
-
-        # We do not want FieldStorage to get parameters from QUERY_STRING
-        tmpdir = self.app.config.get("webapp.upload.tmpdir", None)
-        postenv = self.environ.copy()
+        tmpdir = app.config.get("webapp.upload.tmpdir", None)
+        postenv = environ.copy()
         postenv["QUERY_STRING"] = "" # Don't want POST getting fields from query string
-        form = _FieldStorage(fp=fakefile, environ=postenv, keep_blank_values=True, tmpdir=tmpdir)
+        form = _FieldStorage(fp=self.wsgi_input, environ=postenv, keep_blank_values=True, tmpdir=tmpdir)
 
         # Process each item.  In our data, we want to store everything as a list
         for key in form.keys():
@@ -268,9 +167,126 @@ class Request:
                     if value is not None:
                         valuelist.append(str(value))
 
-        # TODO: Check webapp.upload.maxcount/maxfilesize
 
-    @lazy_property
-    def response(self):
-        """ Create our response object for this request. """
-        return Response(self)
+class Response:
+    """ Represent a response to a request. """
+
+    STATUS_CODES = {
+        100: "Continue",
+        101: "Switching Protocol",
+        102: "Processing (WebDAV)",
+        200: "OK",
+        201: "Created",
+        202: "Accepted",
+        203: "Non-Authoritative Information",
+        204: "No Content",
+        205: "Reset Content",
+        206: "Partial Content",
+        207: "Multi-Status (WebDAV)",
+        208: "Multi-Status (WebDAV)",
+        226: "IM Used (HTTP Delta encoding)",
+        300: "Multiple Choice",
+        301: "Moved Permanently",
+        302: "Found",
+        303: "See Other",
+        304: "Not Modified",
+        305: "Use Proxy",
+        306: "Unused",
+        307: "Temporary Redirect",
+        308: "Permanent Redirect",
+        400: "Bad Request",
+        401: "Unauthorized",
+        402: "Payment Required",
+        403: "Forbidden",
+        404: "Not Found",
+        405: "Method Not Allowed",
+        406: "Not Acceptable",
+        407: "Proxy Authentication Required",
+        408: "Request Timeout",
+        409: "Conflict",
+        410: "Gone",
+        411: "Length Required",
+        412: "Precondition Failed",
+        413: "Payload Too Large",
+        414: "URI Too Long",
+        415: "Unsupported Media Type",
+        416: "Requested Range Not Satisfiable",
+        417: "Expectation Failed",
+        418: "I'm a teapot",
+        421: "Misdirected Request",
+        422: "Unprocessable Entity (WebDAV)",
+        423: "Locked (WebDAV)",
+        424: "Failed Dependency (WebDAV)",
+        426: "Upgrade Required",
+        428: "Precondition Required",
+        429: "Too Many Requests",
+        431: "Request Header Fields Too Large",
+        451: "Unavailable For Legal Reasons",
+        500: "Internal Server Error",
+        501: "Not Implemented",
+        502: "Bad Gateway",
+        503: "Service Unavailable",
+        504: "Gateway Timeout",
+        505: "HTTP Version Not Supported",
+        506: "Variant Also Negotiates",
+        507: "Insufficient Storage",
+        508: "Loop Detected (WebDAV)",
+        510: "Not Extended",
+        511: "Network Authentication Required"
+    }
+
+    def __init__(self, exchange):
+        """ Initialize the response. """
+        self.exchange = exchange
+        self.reset()
+
+    def reset(self):
+        """ Reset the response. """
+        self.status = 500 # If not set, default to server error
+
+        self.headers = {}
+        self.cookies = {}
+        self.content_type = None
+        self.content_length = None
+
+        self.content = ()
+
+    def get_headers(self):
+        """ Get the headers of the response. """
+        headers = []
+        if self.content_type:
+            headers.append(("Content-Type", self.content_type))
+
+        for (name, value) in self.headers.items():
+            headers.append((name, value))
+
+        return headers
+
+    def get_status(self):
+        """ Get the status line of the response. """
+        return "{0} {1}".format(str(self.status), str(self.STATUS_CODES[self.status]))
+
+
+class Exchange:
+    """ An exchange is just a request and response pair. """
+
+    def __init__(self, app, environ):
+        """ Initialize the exchange. """
+        self.app = app
+        self.environ = environ
+        self.timer = None
+
+        self.response = Response(self) # We always have a response object
+        self.request = None # Not created until the exchange is started
+        # self.session = Session(app)
+
+    def start(self):
+        """ Initialize the exchange. """
+        self.timer = time.monotonic()
+        self.request = Request(self)
+        # self.session.init(self.request)
+
+    def finalize(self):
+        """ Finalize the exchange. """
+        # self.session.finalize(self.response)
+
